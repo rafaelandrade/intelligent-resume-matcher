@@ -8,7 +8,7 @@ from langchain.schema import HumanMessage
 
 class OpenAiLLM:
     def __init__(self):
-        self.api_key = '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'
+        self.api_key = 'key'
         self.client = ChatOpenAI(
             model_name="gpt-3.5-turbo", temperature=0.1, openai_api_key=self.api_key
         )
