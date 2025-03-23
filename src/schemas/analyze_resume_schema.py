@@ -1,5 +1,5 @@
+from fastapi import Form, UploadFile
 from pydantic import BaseModel
-from fastapi import UploadFile, Form
 
 
 class AnalyzeResumeSchema(BaseModel):

@@ -11,6 +11,7 @@ def pdf_reader(pdf_file: UploadFile) -> str:
 
     content = PdfReader(pdf_file.file)
     resume_text = " ".join(page.extract_text() for page in content.pages)
-
-    print("resume text -> ", resume_text)
     return resume_text
+
+
+
