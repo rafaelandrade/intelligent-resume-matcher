@@ -19,7 +19,7 @@ class SimilarityContent:
         self.resume_text = resume_text
         self.job_description = job_description
         self.language = language
-        self.open_ai = OpenAiLLM(language="en-US")
+        self.open_ai = OpenAiLLM(language=self.language)
 
     @lru_cache(maxsize=1000)
     async def jaccard_similarity(self) -> float:

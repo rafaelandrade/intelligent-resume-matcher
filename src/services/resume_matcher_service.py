@@ -27,7 +27,7 @@ async def resume_matcher_service(
     similarity_score = SimilarityContent(
         resume_text=pdf_content, job_description=job_description, language=language
     )
-    similarity_response = {}  # await similarity_score.compute_similarity()
+    similarity_response = await similarity_score.compute_similarity()
 
     logger.send_log(f"Similarity Score {similarity_response}")
 

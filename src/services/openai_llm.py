@@ -7,6 +7,7 @@ from langchain.schema import HumanMessage
 from langchain_openai import ChatOpenAI
 
 from src.config import config
+from src.helpers.logger import logger
 
 
 class OpenAiLLM:
@@ -117,10 +118,10 @@ class OpenAiLLM:
         try:
             content = response.content.strip()
 
-            score_match = re.search(r"Score:\s*([\d.]+)", content)
-            keywords_match = re.search(r"Keywords:\s*(.*)", content, re.MULTILINE)
+            score_match = re.search(r"(?:Score|Pontuação):\s*([\d.]+)", content)
+            keywords_match = re.search(r"(?:Keywords|Palavras-chave):\s*(.*)", content, re.MULTILINE)
             feedback_match = re.search(
-                r"Feedback:\s*(.*)", content, re.MULTILINE | re.DOTALL
+                r"(?:Feedback):\s*(.*)", content, re.MULTILINE | re.DOTALL
             )
 
             similarity_score = float(score_match.group(1)) if score_match else 0.0
@@ -146,3 +147,107 @@ class OpenAiLLM:
             return json.loads(response.content)
         except (json.JSONDecodeError, AttributeError):
             return []
+
+    async def analyze_resume_job_match(self, resume: str, job_description: str) -> dict:
+        """
+        Analisa a correspondência entre currículo e vaga em uma única chamada à LLM.
+        Retorna escore, palavras-chave faltantes e feedback estruturado.
+        """
+        logger.info(f"Analyzing resume job match...")
+        prompt = self._get_comprehensive_analysis_prompt(resume, job_description)
+        messages = [HumanMessage(content=prompt)]
+        
+        # Configurando um modelo mais adequado para análises complexas
+        advanced_client = ChatOpenAI(
+            model_name="gpt-4-turbo", # ou outro modelo adequado
+            temperature=0.2,
+            openai_api_key=self.api_key
+        )
+        
+        # Usando function calling para retornar estrutura específica de dados
+        functions = [
+            {
+                "name": "resume_analysis_result",
+                "description": "Returns structured analysis of resume to job match",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "score": {
+                            "type": "number",
+                            "description": "Similarity score between 0 and 1"
+                        },
+                        "missing_keywords": {
+                            "type": "array",
+                            "items": {"type": "string"},
+                            "description": "Keywords from job description missing in resume"
+                        },
+                        "feedback": {
+                            "type": "string",
+                            "description": "Detailed feedback on resume match"
+                        },
+                        "suggested_improvements": {
+                            "type": "array",
+                            "items": {"type": "string"},
+                            "description": "Specific suggestions to improve resume"
+                        }
+                    },
+                    "required": ["score", "missing_keywords", "feedback"]
+                }
+            }
+        ]
+        
+        response = await asyncio.to_thread(
+            lambda: advanced_client.invoke(
+                messages,
+                functions=functions,
+                function_call={"name": "resume_analysis_result"}
+            )
+        )
+        
+        try:
+            # Extrair o resultado estruturado da resposta function calling
+            function_call = response.additional_kwargs.get('function_call', {})
+            if function_call and 'arguments' in function_call:
+                logger.send_log(f"Function call: {function_call}")
+                return json.loads(function_call['arguments'])
+            
+            # Fallback para o método anterior caso function_call falhe
+            logger.send_log(f"Fallback to previous method...")
+            return await self.calculate_contextual_similarity(resume, job_description)
+        except Exception as e:
+            print(f"Error in analyze_resume_job_match: {e}")
+            return {
+                "score": 0.0,
+                "missing_keywords": [],
+                "feedback": "",
+                "suggested_improvements": []
+            }
+
+    def _get_comprehensive_analysis_prompt(self, resume: str, job_description: str) -> str:
+        """Cria um prompt completo para análise do currículo vs vaga."""
+        if self.language == "pt-BR":
+            return (
+                "Faça uma análise completa da compatibilidade entre o currículo e a descrição da vaga abaixo. "
+                "Analise meticulosamente as habilidades, experiências e requisitos. "
+                "\n\n1. Atribua uma pontuação de 0 a 1 que representa o nível de compatibilidade."
+                "\n2. Identifique palavras-chave importantes da vaga que estão ausentes no currículo."
+                "\n3. Forneça feedback sobre o alinhamento entre currículo e vaga."
+                "\n4. Sugira melhorias específicas que poderiam aumentar a correspondência."
+                "\n\nRetorne sua análise em formato JSON estruturado com campos: "
+                "'score', 'missing_keywords', 'feedback', e 'suggested_improvements'."
+                f"\n\nCURRÍCULO:\n{resume}\n\n"
+                f"DESCRIÇÃO DA VAGA:\n{job_description}"
+            )
+        
+        return (
+            "Perform a comprehensive analysis of compatibility between the resume and job description below. "
+            "Meticulously analyze skills, experiences, and requirements. "
+            "\n\n1. Assign a score from 0 to 1 representing the level of compatibility."
+            "\n2. Identify important keywords from the job posting that are missing in the resume."
+            "\n3. Provide feedback on the alignment between resume and job posting."
+            "\n4. Suggest specific improvements that could increase the match."
+            "\n\nReturn your analysis in structured JSON format with fields: "
+            "'score', 'missing_keywords', 'feedback', and 'suggested_improvements'."
+            f"\n\nRESUME:\n{resume}\n\n"
+            f"JOB DESCRIPTION:\n{job_description}"
+        )
