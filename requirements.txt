@@ -1,12 +1,8 @@
 fastapi===0.115.0
 uvicorn==0.23.0
 PyPDF2==3.0.1
-spacy==3.8.4
-scikit-learn==1.6.1
 python-multipart
 sentence-transformers
-numpy
-nltk
 requests
 langchain==0.3.18
 langchain-community

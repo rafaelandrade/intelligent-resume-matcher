@@ -1,0 +1,37 @@
+version: '3.8'
+
+services:
+  app:
+    build: .
+    ports:
+      - "8009:8009"
+    environment:
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - REDIS_PASSWORD=mypassword
+    depends_on:
+      - redis
+    restart: unless-stopped
+    networks:
+      - app-network
+    volumes:
+      - ./:/app
+      - ./logs:/app/logs
+
+  redis:
+    image: redis:6-alpine
+    ports:
+      - "6379:6379"
+    command: redis-server --appendonly yes --requirepass mypassword
+    volumes:
+      - redis-data:/data
+    networks:
+      - app-network
+    restart: unless-stopped
+
+networks:
+  app-network:
+    driver: bridge
+
+volumes:
+  redis-data:

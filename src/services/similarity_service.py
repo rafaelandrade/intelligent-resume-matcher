@@ -1,9 +1,15 @@
+import hashlib
+import json
+
 from dataclasses import dataclass
 from functools import lru_cache
-from typing import Dict, List
+from typing import Dict, List, Union
 
 from src.services.openai_llm import OpenAiLLM
 from src.utils.job_description_parser import ParseResult
+from src.database.redis_client import get_redis_client, set_with_expiry, get_value, RATE_LIMIT_EXPIRATION
+
+redis_client = get_redis_client()
 
 
 @dataclass
@@ -20,6 +26,7 @@ class SimilarityContent:
         self.job_description = job_description
         self.language = language
         self.open_ai = OpenAiLLM(language=self.language)
+        self.cache_key = self._generate_cache_key(resume_text, job_description)
 
     @lru_cache(maxsize=1000)
     async def jaccard_similarity(self) -> float:
@@ -33,7 +40,16 @@ class SimilarityContent:
             self.resume_text, self.job_description
         )
 
-    async def compute_similarity(self) -> Dict[str, float | List[str]]:
+    def _generate_cache_key(self, resume_text: str, job_description: str) -> str:
+        """Generate a similarity key"""
+        combined = f"{resume_text}:{job_description}"
+        return f"similarity_result:{hashlib.sha256(combined.encode()).hexdigest()}"
+
+    async def compute_similarity(self) -> Dict[str, Union[float, List[str]]]:
+        cached_result = get_value(self.cache_key)
+        if cached_result:
+            return json.loads(cached_result)
+
         jaccard_score = await self.jaccard_similarity()
         contextual_analysis = await self.contextual_similarity()
         combined_score = (jaccard_score + contextual_analysis.get("score", 0.0)) / 2
